@@ -9,6 +9,13 @@ import { SessionRecord } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import confetti from 'canvas-confetti';
 
+const NUM_PAD_ROWS = [
+  ['7', '8', '9'],
+  ['4', '5', '6'],
+  ['1', '2', '3'],
+  ['←', '0', '✓'],
+];
+
 export default function PlayPage() {
   const router = useRouter();
   const {
@@ -33,10 +40,11 @@ export default function PlayPage() {
     wasTimeout: boolean;
   } | null>(null);
 
-  const inputRef = useRef<HTMLInputElement>(null);
   const cardTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionEndedRef = useRef(false);
+  // Stable ref so the keyboard handler always calls the latest handleSubmit
+  const submitRef = useRef<() => void>(() => {});
 
   const isFlashcard = settings.mode === 'flashcard';
   const currentCard = deck[currentIndex];
@@ -51,13 +59,6 @@ export default function PlayPage() {
       router.push('/settings');
     }
   }, []);
-
-  // Focus input when not in reveal state
-  useEffect(() => {
-    if (!reveal) {
-      inputRef.current?.focus();
-    }
-  }, [currentIndex, reveal]);
 
   // Per-card timer — only runs when not in reveal state
   useEffect(() => {
@@ -135,6 +136,23 @@ export default function PlayPage() {
     };
   }, [reveal]);
 
+  // Desktop keyboard support during answer phase
+  useEffect(() => {
+    if (reveal) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.key >= '0' && e.key <= '9') {
+        setInput((prev) => prev + e.key);
+      } else if (e.key === 'Backspace') {
+        setInput((prev) => prev.slice(0, -1));
+      } else if (e.key === 'Enter') {
+        submitRef.current();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [reveal]);
+
   const handleTimeout = () => {
     const { answer } = recordTimeout();
     setInput('');
@@ -162,6 +180,9 @@ export default function PlayPage() {
       setReveal({ correctAnswer: answer, wasTimeout: false });
     }
   };
+
+  // Keep submitRef current on every render
+  submitRef.current = handleSubmit;
 
   const handleAdvance = () => {
     setReveal(null);
@@ -199,8 +220,18 @@ export default function PlayPage() {
     setTimeout(() => router.push('/results'), 0);
   };
 
+  const handlePadPress = (key: string) => {
+    if (key === '←') {
+      setInput((prev) => prev.slice(0, -1));
+    } else if (key === '✓') {
+      handleSubmit();
+    } else {
+      setInput((prev) => prev + key);
+    }
+  };
+
   return (
-    <main className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-6 gap-8">
+    <main className="min-h-[calc(100vh-4rem)] flex flex-col items-center p-4 gap-3">
 
       {/* Progress bar */}
       <div className="w-full max-w-md">
@@ -237,75 +268,107 @@ export default function PlayPage() {
       </div>
 
       {/* Card */}
-      <div className={`w-full max-w-md rounded-3xl p-10 transition-all duration-300 ${
-        reveal
-          ? 'bg-red-50 border-3 border-red-300 shadow-xl shadow-red-200/50'
-          : 'bg-white border-3 border-gray-200 shadow-2xl'
-      }`} style={{ background: reveal ? '#FEF2F2' : '#FFFEF7' }}>
-
+      <div
+        className={`w-full max-w-md rounded-3xl p-6 transition-all duration-300 ${
+          reveal
+            ? 'border-3 border-red-300 shadow-xl shadow-red-200/50'
+            : 'border-3 border-gray-200 shadow-2xl'
+        }`}
+        style={{ background: reveal ? '#FEF2F2' : '#FFFEF7' }}
+      >
         {/* Per-card timer */}
         {timeLeft !== null && !reveal && (
-          <div className="text-center mb-6">
-            <span className={`text-3xl font-bold transition-colors ${
-              timeLeft <= 3 ? 'text-red-500' : 'text-gray-400'
-            }`} style={{ fontFamily: "'Fredoka', sans-serif" }}>
+          <div className="text-center mb-3">
+            <span
+              className={`text-3xl font-bold transition-colors ${timeLeft <= 3 ? 'text-red-500' : 'text-gray-400'}`}
+              style={{ fontFamily: "'Fredoka', sans-serif" }}
+            >
               &#x23F0; {timeLeft}s
             </span>
           </div>
         )}
 
         {/* Question */}
-        <div className="text-center text-6xl font-bold text-gray-800 mb-10" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+        <div
+          className="text-center text-5xl md:text-6xl font-bold text-gray-800 mb-4"
+          style={{ fontFamily: "'Fredoka', sans-serif" }}
+        >
           {question}
         </div>
 
-        {/* Reveal state */}
         {reveal ? (
-          <div className="space-y-6">
+          /* Reveal state */
+          <div className="space-y-4">
             <div className="text-center">
-              <p className="text-lg text-red-400 font-bold mb-2" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+              <p className="text-lg text-red-400 font-bold mb-1" style={{ fontFamily: "'Fredoka', sans-serif" }}>
                 {reveal.wasTimeout ? "⏰ Time's up!" : '❌ Oops!'}
               </p>
-              <p className="text-lg text-gray-500 font-semibold">The answer is</p>
-              <p className="text-8xl font-bold text-green-500 mt-3" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+              <p className="text-base text-gray-500 font-semibold">The answer is</p>
+              <p className="text-8xl font-bold text-green-500 mt-2" style={{ fontFamily: "'Fredoka', sans-serif" }}>
                 {reveal.correctAnswer}
               </p>
             </div>
             <button
               onClick={handleAdvance}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-2xl transition-all duration-200 text-xl shadow-lg shadow-blue-300/50 border-b-4 border-blue-700"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-2xl transition-all duration-200 text-xl shadow-lg shadow-blue-300/50 border-b-4 border-blue-700 active:scale-[0.98] active:border-b-0"
               style={{ fontFamily: "'Fredoka', sans-serif" }}
             >
               Next Card &#x27A1;&#xFE0F;
             </button>
           </div>
         ) : (
-          <>
-            <input
-              ref={inputRef}
-              type="number"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.nativeEvent.stopPropagation();
-                  handleSubmit();
-                }
-              }}
-              className="w-full text-center text-5xl bg-yellow-50 border-3 border-yellow-300 text-gray-800 rounded-2xl p-5 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all placeholder-gray-300"
-              style={{ fontFamily: "'Fredoka', sans-serif" }}
-              placeholder="?"
-            />
-            <button
-              onClick={handleSubmit}
-              className="mt-5 w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-2xl transition-all duration-200 text-xl shadow-lg shadow-green-300/50 border-b-4 border-green-700"
-              style={{ fontFamily: "'Fredoka', sans-serif" }}
-            >
-              Submit! &#x2705;
-            </button>
-          </>
+          /* Answer display — replaces the native input */
+          <div className="rounded-2xl px-6 py-3 text-center bg-yellow-50 border-3 border-yellow-300 min-h-[72px] flex items-center justify-center">
+            {input ? (
+              <span className="text-5xl font-bold text-gray-800" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+                {input}
+              </span>
+            ) : (
+              <span className="text-5xl font-bold text-gray-300" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+                ?
+              </span>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Number pad — only during answer phase */}
+      {!reveal && (
+        <div className="w-full max-w-md grid grid-cols-3 gap-2">
+          {NUM_PAD_ROWS.flat().map((key) => {
+            const isConfirm = key === '✓';
+            const isBackspace = key === '←';
+
+            let btnClass =
+              'py-4 rounded-2xl font-bold text-2xl border-2 transition-all duration-100 active:scale-[0.92] select-none ';
+
+            if (isConfirm) {
+              btnClass +=
+                'bg-green-500 border-green-600 border-b-4 border-b-green-700 text-white shadow-lg shadow-green-300/50 hover:bg-green-600';
+            } else if (isBackspace) {
+              btnClass +=
+                'bg-red-50 border-red-200 border-b-4 border-b-red-300 text-red-500 hover:bg-red-100';
+            } else {
+              btnClass +=
+                'bg-white border-gray-200 border-b-4 border-b-gray-300 text-gray-700 hover:bg-gray-50 shadow-sm';
+            }
+
+            return (
+              <button
+                key={key}
+                onPointerDown={(e) => {
+                  e.preventDefault(); // prevents focus steal / mobile zoom
+                  handlePadPress(key);
+                }}
+                className={btnClass}
+                style={{ fontFamily: "'Fredoka', sans-serif" }}
+              >
+                {key}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Quit */}
       <button
