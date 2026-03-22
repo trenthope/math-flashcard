@@ -1,4 +1,5 @@
-const CACHE_NAME = 'math-flashcards-v1';
+const CACHE_VERSION = 'v2';
+const CACHE_NAME = `math-flashcards-${CACHE_VERSION}`;
 
 // App shell pages to pre-cache on install
 const PRECACHE_URLS = [
@@ -34,7 +35,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// ── Fetch ─────────────────────────────────────────────────────────────────────
+// ── Fetch: cache-first, populate cache on network hit ─────────────────────────
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -42,43 +43,17 @@ self.addEventListener('fetch', (event) => {
   // Only handle GET requests from our own origin
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // Cache-first for content-hashed Next.js static chunks and local icons.
-  // These filenames change when the content changes, so it's safe to serve
-  // them from cache forever and populate the cache on first fetch.
-  if (
-    url.pathname.startsWith('/_next/static/') ||
-    url.pathname.startsWith('/icons/')
-  ) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
+  event.respondWith(
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          // Only cache successful responses
           if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            cache.put(request, response.clone());
           }
           return response;
         });
       })
-    );
-    return;
-  }
-
-  // Network-first for navigation and everything else.
-  // On success we refresh the cache; on failure we serve the cached version.
-  // If nothing is cached we fall back to the pre-cached app root ('/').
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      })
-      .catch(() =>
-        caches.match(request).then((cached) => cached || caches.match('/'))
-      )
+    )
   );
 });
