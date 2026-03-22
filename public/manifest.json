@@ -3,6 +3,7 @@
   "short_name": "Math Flash",
   "description": "Practice math facts with flashcards and timed drills",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#FFF8F0",
   "theme_color": "#EF4444",
