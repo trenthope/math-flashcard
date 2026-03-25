@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUserStore } from '@/store/userStore';
+import { useGameStore } from '@/store/gameStore';
 
 const TAG_COLORS = [
   { bg: 'bg-red-500', hover: 'hover:bg-red-600', ring: 'ring-red-300', light: 'bg-red-100', text: 'text-red-700' },
@@ -20,6 +21,7 @@ function getColor(index: number) {
 export default function WhoIsPlayingPage() {
   const router = useRouter();
   const { users, addUser, selectUser, renameUser, deleteUser } = useUserStore();
+  const { updateSettings } = useGameStore();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,6 +30,7 @@ export default function WhoIsPlayingPage() {
   const handleSelect = (id: string) => {
     if (editingId) return;
     selectUser(id);
+    updateSettings({ focusNumbers: Array.from({ length: 12 }, (_, i) => i + 1) });
     router.push('/settings');
   };
 
@@ -38,6 +41,7 @@ export default function WhoIsPlayingPage() {
     setName('');
     setAdding(false);
     selectUser(user.id);
+    updateSettings({ focusNumbers: Array.from({ length: 12 }, (_, i) => i + 1) });
     router.push('/settings');
   };
 

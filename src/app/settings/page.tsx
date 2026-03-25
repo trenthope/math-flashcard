@@ -181,6 +181,7 @@ export default function SettingsPage() {
                   min={1}
                   value={settings.rangeMin}
                   onChange={(e) => updateSettings({ rangeMin: Number(e.target.value) })}
+                  onClick={(e) => e.currentTarget.select()}
                   className="w-24 bg-purple-50 border-2 border-purple-300 text-gray-800 rounded-2xl px-4 py-3 text-lg font-bold focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
                   style={{ fontFamily: "'Fredoka', sans-serif" }}
                 />
@@ -190,6 +191,7 @@ export default function SettingsPage() {
                   min={1}
                   value={settings.rangeMax}
                   onChange={(e) => updateSettings({ rangeMax: Number(e.target.value) })}
+                  onClick={(e) => e.currentTarget.select()}
                   className="w-24 bg-purple-50 border-2 border-purple-300 text-gray-800 rounded-2xl px-4 py-3 text-lg font-bold focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
                   style={{ fontFamily: "'Fredoka', sans-serif" }}
                 />
@@ -210,6 +212,7 @@ export default function SettingsPage() {
                   max={100}
                   value={settings.deckSize}
                   onChange={(e) => updateSettings({ deckSize: Number(e.target.value) })}
+                  onClick={(e) => e.currentTarget.select()}
                   className="w-full bg-green-50 border-2 border-green-300 text-gray-800 rounded-2xl px-4 py-3 text-lg font-bold focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
                   style={{ fontFamily: "'Fredoka', sans-serif" }}
                 />
@@ -224,6 +227,7 @@ export default function SettingsPage() {
                     max={600}
                     value={settings.timeLimit}
                     onChange={(e) => updateSettings({ timeLimit: Number(e.target.value) })}
+                    onClick={(e) => e.currentTarget.select()}
                     className="w-24 bg-green-50 border-2 border-green-300 text-gray-800 rounded-2xl px-4 py-3 text-lg font-bold focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
                     style={{ fontFamily: "'Fredoka', sans-serif" }}
                   />
@@ -262,6 +266,7 @@ export default function SettingsPage() {
                       onChange={(e) =>
                         updateSettings({ perCardLimit: Math.max(1, Number(e.target.value)) })
                       }
+                      onClick={(e) => e.currentTarget.select()}
                       className="w-24 bg-white border-2 border-orange-300 text-gray-800 rounded-2xl px-4 py-3 text-lg font-bold focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all"
                       style={{ fontFamily: "'Fredoka', sans-serif" }}
                     />
@@ -279,6 +284,7 @@ export default function SettingsPage() {
                 max={10}
                 value={settings.repeatWindow}
                 onChange={(e) => updateSettings({ repeatWindow: Number(e.target.value) })}
+                onClick={(e) => e.currentTarget.select()}
                 className="w-16 bg-teal-50 border-2 border-teal-300 text-gray-800 rounded-2xl px-3 py-2 text-base font-bold text-center focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-all"
                 style={{ fontFamily: "'Fredoka', sans-serif" }}
               />

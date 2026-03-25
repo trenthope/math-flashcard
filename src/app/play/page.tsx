@@ -22,6 +22,7 @@ export default function PlayPage() {
     settings,
     deck,
     currentIndex,
+    cardsAnswered,
     streak,
     isActive,
     recordAnswer,
@@ -50,7 +51,7 @@ export default function PlayPage() {
   const currentCard = deck[currentIndex];
   const question = currentCard ? buildQuestion(currentCard) : '';
   const progress = isFlashcard
-    ? Math.min((currentIndex / deck.length) * 100, 100)
+    ? Math.min((cardsAnswered / settings.deckSize) * 100, 100)
     : ((settings.timeLimit - sessionTimeLeft) / settings.timeLimit) * 100;
 
   // Redirect if no active session
@@ -116,10 +117,10 @@ export default function PlayPage() {
   // Check if flashcard deck is complete
   useEffect(() => {
     if (reveal) return;
-    if (isFlashcard && currentIndex >= deck.length && currentIndex > 0) {
+    if (isFlashcard && cardsAnswered >= settings.deckSize) {
       handleEndSession();
     }
-  }, [currentIndex, reveal]);
+  }, [cardsAnswered, reveal]);
 
   // Enter key advances from reveal screen
   useEffect(() => {
@@ -239,7 +240,7 @@ export default function PlayPage() {
           {isFlashcard ? (
             <>
               <span className="text-gray-500 font-bold" style={{ fontFamily: "'Fredoka', sans-serif" }}>
-                Card {Math.min(currentIndex + 1, deck.length)} of {deck.length}
+                Card {Math.min(cardsAnswered + 1, settings.deckSize)} of {settings.deckSize}
               </span>
               <span className="text-2xl" style={{ fontFamily: "'Fredoka', sans-serif" }}>
                 {streak >= 5 ? '🔥🔥🔥' : streak >= 3 ? '🔥🔥' : streak > 0 ? '🔥' : ''}
@@ -301,7 +302,7 @@ export default function PlayPage() {
           <div className="space-y-4">
             <div className="text-center">
               <p className="text-lg text-red-400 font-bold mb-1" style={{ fontFamily: "'Fredoka', sans-serif" }}>
-                {reveal.wasTimeout ? "⏰ Time's up!" : '❌ Oops!'}
+                {reveal.wasTimeout ? "⏰ Time's up!" : '❌'}
               </p>
               <p className="text-base text-gray-500 font-semibold">The answer is</p>
               <p className="text-8xl font-bold text-green-500 mt-2" style={{ fontFamily: "'Fredoka', sans-serif" }}>

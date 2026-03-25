@@ -7,6 +7,7 @@ interface GameState {
   settings: SessionSettings;
   deck: Card[];
   currentIndex: number;
+  cardsAnswered: number;
   cardResults: CardResult[];
   streak: number;
   sessionStart: number | null;
@@ -27,6 +28,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   settings: defaultSettings,
   deck: [],
   currentIndex: 0,
+  cardsAnswered: 0,
   cardResults: [],
   streak: 0,
   sessionStart: null,
@@ -46,6 +48,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({
       deck,
       currentIndex: 0,
+      cardsAnswered: 0,
       cardResults: [],
       streak: 0,
       sessionStart: Date.now(),
@@ -80,11 +83,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newStreak = correct ? streak + 1 : 0;
     const shouldConfetti = correct && newStreak % 5 === 0;
 
-    set({
+    set((state) => ({
       deck: newDeck,
       cardResults: [...cardResults, result],
       streak: newStreak,
-    });
+      cardsAnswered: state.cardsAnswered + 1,
+    }));
 
     return { correct, confetti: shouldConfetti, answer: card.answer };
   },
@@ -107,11 +111,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const newDeck = requeueMissed([...deck], currentIndex, settings.repeatWindow);
 
-    set({
+    set((state) => ({
       deck: newDeck,
       cardResults: [...cardResults, result],
       streak: 0,
-    });
+      cardsAnswered: state.cardsAnswered + 1,
+    }));
 
     return { answer: card.answer };
   },
