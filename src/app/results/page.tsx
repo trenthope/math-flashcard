@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/store/gameStore';
 
@@ -8,10 +8,13 @@ export default function ResultsPage() {
   const router = useRouter();
   const { lastSession, settings } = useGameStore();
 
+  // Mount-only: "Play Again" clears lastSession on its way to /play, and
+  // that must not also trigger a redirect to /settings.
+  const onSessionMissing = useEffectEvent(() => {
+    if (!lastSession) router.push('/settings');
+  });
   useEffect(() => {
-    if (!lastSession) {
-      router.push('/settings');
-    }
+    onSessionMissing();
   }, []);
 
   if (!lastSession) return null;

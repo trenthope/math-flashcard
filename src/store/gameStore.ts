@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 import { Card, CardResult, SessionSettings, defaultSettings } from '@/types';
-import { generateDeck, requeueMissed, checkAnswer, calculateSessionStats } from '@/lib/game';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  generateDeck,
+  requeueMissed,
+  checkAnswer,
+  calculateSessionStats,
+  buildQuestion,
+  normalizeSettings,
+} from '@/lib/game';
+
+// Math Minute has no fixed deck size, so cards are generated in batches
+// and topped up as the player gets close to the end of the deck.
+const MATH_MINUTE_BATCH = 50;
+const MATH_MINUTE_REFILL_AT = 10;
 
 interface GameState {
   settings: SessionSettings;
@@ -22,6 +33,7 @@ interface GameState {
   recordTimeout: () => { answer: number };
   advanceCard: () => void;
   endSession: () => ReturnType<typeof calculateSessionStats>;
+  quitSession: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -40,12 +52,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => ({ settings: { ...state.settings, ...partial } })),
 
   startSession: () => {
-    const { settings } = get();
-    const effectiveSettings = settings.mode === 'mathminute'
-      ? { ...settings, deckSize: 9999 }
-      : settings;
-    const deck = generateDeck(effectiveSettings);
+    const settings = normalizeSettings(get().settings);
+    const deck = generateDeck(
+      settings.mode === 'mathminute'
+        ? { ...settings, deckSize: MATH_MINUTE_BATCH }
+        : settings
+    );
     set({
+      settings,
       deck,
       currentIndex: 0,
       cardsAnswered: 0,
@@ -66,7 +80,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const correct = checkAnswer(card, input);
 
     const result: CardResult = {
-      question: '',
+      question: buildQuestion(card),
       answer: card.answer,
       userAnswer: input,
       correct,
@@ -100,7 +114,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const timeMs = Date.now() - (get().cardStart ?? Date.now());
 
     const result: CardResult = {
-      question: '',
+      question: buildQuestion(card),
       answer: card.answer,
       userAnswer: null,
       correct: false,
@@ -123,10 +137,24 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Advances to next card — called by play page after reveal is dismissed
   advanceCard: () => {
-    set((state) => ({
-      currentIndex: state.currentIndex + 1,
-      cardStart: Date.now(),
-    }));
+    set((state) => {
+      const currentIndex = state.currentIndex + 1;
+      let deck = state.deck;
+      if (
+        state.settings.mode === 'mathminute' &&
+        deck.length - currentIndex <= MATH_MINUTE_REFILL_AT
+      ) {
+        const last = deck[deck.length - 1];
+        deck = [
+          ...deck,
+          ...generateDeck(
+            { ...state.settings, deckSize: MATH_MINUTE_BATCH },
+            last?.rangeValue ?? null
+          ),
+        ];
+      }
+      return { deck, currentIndex, cardStart: Date.now() };
+    });
   },
 
   endSession: () => {
@@ -136,4 +164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ isActive: false, lastSession: stats });
     return stats;
   },
+
+  // Abandons the session without recording it
+  quitSession: () => set({ isActive: false }),
 }));

@@ -24,7 +24,7 @@ export default function SettingsPage() {
     if (!currentUserId) {
       router.push('/');
     }
-  }, []);
+  }, [currentUserId, router]);
 
   const toggleOperation = (op: Operation) => {
     const current = settings.operations;
@@ -40,11 +40,6 @@ export default function SettingsPage() {
     startSession();
     router.push('/play');
   };
-
-  const hasSingle = (op: Operation) =>
-    settings.operations.length === 1 && settings.operations[0] === op;
-
-  const inputClasses = "w-full bg-white border-2 border-gray-200 text-gray-800 rounded-2xl px-4 py-3 text-lg font-bold focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 transition-all";
 
   return (
     <main className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6">

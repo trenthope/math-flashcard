@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/store/gameStore';
 import { useHistoryStore } from '@/store/historyStore';
@@ -29,11 +29,12 @@ export default function PlayPage() {
     recordTimeout,
     advanceCard,
     endSession,
+    quitSession,
   } = useGameStore();
   const { saveSession } = useHistoryStore();
 
   const [input, setInput] = useState('');
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number | null>(settings.perCardLimit);
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(settings.timeLimit);
 
   const [reveal, setReveal] = useState<{
@@ -44,120 +45,21 @@ export default function PlayPage() {
   const cardTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionEndedRef = useRef(false);
-  // Stable ref so the keyboard handler always calls the latest handleSubmit
-  const submitRef = useRef<() => void>(() => {});
 
   const isFlashcard = settings.mode === 'flashcard';
   const currentCard = deck[currentIndex];
+  const currentCardId = currentCard?.id;
   const question = currentCard ? buildQuestion(currentCard) : '';
   const progress = isFlashcard
     ? Math.min((cardsAnswered / settings.deckSize) * 100, 100)
     : ((settings.timeLimit - sessionTimeLeft) / settings.timeLimit) * 100;
 
-  // Redirect if no active session
-  useEffect(() => {
-    if (!isActive || deck.length === 0) {
-      router.push('/settings');
-    }
-  }, []);
-
-  // Per-card timer — only runs when not in reveal state
-  useEffect(() => {
-    if (!currentCard || reveal) return;
-    if (cardTimerRef.current) clearInterval(cardTimerRef.current);
-
-    if (settings.perCardLimit) {
-      setTimeLeft(settings.perCardLimit);
-      cardTimerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev === null || prev <= 1) {
-            clearInterval(cardTimerRef.current!);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      setTimeLeft(null);
-    }
-
-    return () => {
-      if (cardTimerRef.current) clearInterval(cardTimerRef.current);
-    };
-  }, [currentIndex, reveal]);
-
-  // Handle timeout when timer reaches 0
-  useEffect(() => {
-    if (timeLeft === 0 && !reveal) {
-      handleTimeout();
-    }
-  }, [timeLeft]);
-
-  // Session timer for Math Minute
-  useEffect(() => {
-    if (isFlashcard) return;
-    setSessionTimeLeft(settings.timeLimit);
-
-    sessionTimerRef.current = setInterval(() => {
-      setSessionTimeLeft((prev) => Math.max(prev - 1, 0));
-    }, 1000);
-
-    return () => {
-      if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
-    };
-  }, []);
-
-  // End Math Minute when the session timer runs out. Kept out of the
-  // setState updater above, which must be pure (it runs during render).
-  useEffect(() => {
-    if (!isFlashcard && sessionTimeLeft === 0) {
-      handleEndSession();
-    }
-  }, [sessionTimeLeft]);
-
-  // Check if flashcard deck is complete
-  useEffect(() => {
-    if (reveal) return;
-    if (isFlashcard && cardsAnswered >= settings.deckSize) {
-      handleEndSession();
-    }
-  }, [cardsAnswered, reveal]);
-
-  // Enter key advances from reveal screen
-  useEffect(() => {
-    if (!reveal) return;
-    let armed = false;
-    const raf = requestAnimationFrame(() => { armed = true; });
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && armed && !e.repeat) handleAdvance();
-    };
-    window.addEventListener('keydown', handler);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('keydown', handler);
-    };
-  }, [reveal]);
-
-  // Desktop keyboard support during answer phase
-  useEffect(() => {
-    if (reveal) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.repeat) return;
-      if (e.key >= '0' && e.key <= '9') {
-        setInput((prev) => prev + e.key);
-      } else if (e.key === 'Backspace') {
-        setInput((prev) => prev.slice(0, -1));
-      } else if (e.key === 'Enter') {
-        submitRef.current();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [reveal]);
+  // ── Handlers ─────────────────────────────────────────────────
 
   const handleTimeout = () => {
     const { answer } = recordTimeout();
     setInput('');
+    setTimeLeft(null);
     setReveal({ correctAnswer: answer, wasTimeout: true });
   };
 
@@ -177,18 +79,17 @@ export default function PlayPage() {
     setInput('');
 
     if (correct) {
+      setTimeLeft(settings.perCardLimit);
       advanceCard();
     } else {
       setReveal({ correctAnswer: answer, wasTimeout: false });
     }
   };
 
-  // Keep submitRef current on every render
-  submitRef.current = handleSubmit;
-
   const handleAdvance = () => {
     setReveal(null);
     setInput('');
+    setTimeLeft(settings.perCardLimit);
     advanceCard();
   };
 
@@ -222,6 +123,16 @@ export default function PlayPage() {
     setTimeout(() => router.push('/results'), 0);
   };
 
+  const handleQuit = () => {
+    // Stop the clocks so a timer expiring before navigation can't save
+    // the abandoned session
+    sessionEndedRef.current = true;
+    if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+    if (cardTimerRef.current) clearInterval(cardTimerRef.current);
+    quitSession();
+    router.push('/settings');
+  };
+
   const handlePadPress = (key: string) => {
     if (key === '←') {
       setInput((prev) => prev.slice(0, -1));
@@ -231,6 +142,108 @@ export default function PlayPage() {
       setInput((prev) => prev + key);
     }
   };
+
+  // Effect events always see the latest handlers without making the
+  // effects below re-run (and restart timers) on every render.
+  const onSessionMissing = useEffectEvent(() => {
+    if (!isActive || deck.length === 0) router.push('/settings');
+  });
+  const onTimeout = useEffectEvent(handleTimeout);
+  const onSessionOver = useEffectEvent(handleEndSession);
+  const onAdvance = useEffectEvent(handleAdvance);
+  const onSubmit = useEffectEvent(handleSubmit);
+
+  // ── Effects ──────────────────────────────────────────────────
+
+  // Redirect if there's no active session when the page first loads.
+  // Mount-only: isActive goes false when the session ends, and that
+  // must not bounce the player to /settings instead of /results.
+  useEffect(() => {
+    onSessionMissing();
+  }, []);
+
+  // Per-card timer — only runs when not in reveal state. The countdown
+  // value is reset by the handlers that move to the next card.
+  useEffect(() => {
+    if (!currentCardId || reveal || !settings.perCardLimit) return;
+
+    cardTimerRef.current = setInterval(() => {
+      setTimeLeft((prev) => (prev === null ? null : Math.max(prev - 1, 0)));
+    }, 1000);
+
+    return () => {
+      if (cardTimerRef.current) clearInterval(cardTimerRef.current);
+    };
+  }, [currentCardId, reveal, settings.perCardLimit]);
+
+  // Handle timeout when the card timer reaches 0
+  useEffect(() => {
+    if (timeLeft === 0 && !reveal) {
+      if (cardTimerRef.current) clearInterval(cardTimerRef.current);
+      onTimeout();
+    }
+  }, [timeLeft, reveal]);
+
+  // Session timer for Math Minute
+  useEffect(() => {
+    if (isFlashcard) return;
+
+    sessionTimerRef.current = setInterval(() => {
+      setSessionTimeLeft((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+
+    return () => {
+      if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+    };
+  }, [isFlashcard]);
+
+  // End Math Minute when the session timer runs out. Kept out of the
+  // setState updater above, which must be pure (it runs during render).
+  useEffect(() => {
+    if (!isFlashcard && sessionTimeLeft === 0) {
+      onSessionOver();
+    }
+  }, [isFlashcard, sessionTimeLeft]);
+
+  // Check if flashcard deck is complete
+  useEffect(() => {
+    if (reveal) return;
+    if (isFlashcard && cardsAnswered >= settings.deckSize) {
+      onSessionOver();
+    }
+  }, [isFlashcard, cardsAnswered, settings.deckSize, reveal]);
+
+  // Enter key advances from reveal screen
+  useEffect(() => {
+    if (!reveal) return;
+    let armed = false;
+    const raf = requestAnimationFrame(() => { armed = true; });
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && armed && !e.repeat) onAdvance();
+    };
+    window.addEventListener('keydown', handler);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', handler);
+    };
+  }, [reveal]);
+
+  // Desktop keyboard support during answer phase
+  useEffect(() => {
+    if (reveal) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.key >= '0' && e.key <= '9') {
+        setInput((prev) => prev + e.key);
+      } else if (e.key === 'Backspace') {
+        setInput((prev) => prev.slice(0, -1));
+      } else if (e.key === 'Enter') {
+        onSubmit();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [reveal]);
 
   return (
     <main className="min-h-[calc(100vh-4rem)] flex flex-col items-center p-4 gap-3">
@@ -374,7 +387,7 @@ export default function PlayPage() {
 
       {/* Quit */}
       <button
-        onClick={() => router.push('/settings')}
+        onClick={handleQuit}
         className="text-sm text-gray-400 hover:text-gray-600 font-semibold transition-colors"
       >
         Quit session

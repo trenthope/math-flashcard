@@ -1,5 +1,32 @@
-import { Card, CardResult, Operation, SessionSettings } from '@/types';
+import { Card, CardResult, Operation, SessionSettings, defaultSettings } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
+
+// ── Settings Validation ──────────────────────────────────────
+
+function clampInt(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(Math.round(value), min), max);
+}
+
+/** Clamps settings to the ranges the settings page allows. Number inputs
+ *  can be cleared or typed out of range, which would otherwise produce
+ *  0-second sessions, empty decks, or divide-by-zero progress bars. */
+export function normalizeSettings(settings: SessionSettings): SessionSettings {
+  let rangeMin = clampInt(settings.rangeMin, 1, 1000, defaultSettings.rangeMin);
+  let rangeMax = clampInt(settings.rangeMax, 1, 1000, defaultSettings.rangeMax);
+  if (rangeMin > rangeMax) [rangeMin, rangeMax] = [rangeMax, rangeMin];
+
+  return {
+    ...settings,
+    rangeMin,
+    rangeMax,
+    deckSize: clampInt(settings.deckSize, 1, 100, defaultSettings.deckSize),
+    timeLimit: clampInt(settings.timeLimit, 10, 600, defaultSettings.timeLimit),
+    perCardLimit:
+      settings.perCardLimit === null ? null : clampInt(settings.perCardLimit, 1, 30, 5),
+    repeatWindow: clampInt(settings.repeatWindow, 1, 10, defaultSettings.repeatWindow),
+  };
+}
 
 // ── Card Generation ──────────────────────────────────────────
 
@@ -63,9 +90,11 @@ export function checkAnswer(card: Card, input: number): boolean {
 
 // ── Deck Generation ──────────────────────────────────────────
 
-export function generateDeck(settings: SessionSettings): Card[] {
+export function generateDeck(
+  settings: SessionSettings,
+  lastRangeValue: number | null = null
+): Card[] {
   const deck: Card[] = [];
-  let lastRangeValue: number | null = null;
 
   for (let i = 0; i < settings.deckSize; i++) {
     const card = generateCard(settings, lastRangeValue);
@@ -140,7 +169,9 @@ export function calculateSessionStats(
 ) {
   const correct = cards.filter(c => c.correct).length;
   const accuracy = cards.length > 0 ? correct / cards.length : 0;
-  const avgTimePerCard = cards.length > 0 ? totalTimeMs / cards.length : 0;
+  // Average answering time only — excludes time spent on the reveal screen
+  const answerTimeMs = cards.reduce((sum, c) => sum + c.timeMs, 0);
+  const avgTimePerCard = cards.length > 0 ? answerTimeMs / cards.length : 0;
 
   return {
     cardsAttempted: cards.length,
