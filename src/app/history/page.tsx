@@ -110,7 +110,7 @@ export default function HistoryPage() {
 
   const mathMinuteChartData = mathMinuteSessions.map((s) => ({
     date: fmtDate(s.createdAt),
-    cards: s.cardsAttempted,
+    correctPerMin: s.timeLimit > 0 ? +((s.cardsCorrect / s.timeLimit) * 60).toFixed(1) : 0,
     accuracy: Math.round(s.accuracy * 100),
   }));
 
@@ -230,14 +230,14 @@ export default function HistoryPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h3 className="text-sm font-bold text-gray-400 mb-2">Cards Completed</h3>
+                  <h3 className="text-sm font-bold text-gray-400 mb-2">Speed (correct per minute)</h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <ComposedChart data={mathMinuteChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                       <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                      <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                      <Tooltip contentStyle={tooltipStyle} />
-                      <Bar dataKey="cards" name="Cards" fill="#3B82F6" radius={[8, 8, 0, 0]} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#9CA3AF' }} />
+                      <Tooltip formatter={(value) => `${value}/min`} contentStyle={tooltipStyle} />
+                      <Bar dataKey="correctPerMin" name="Correct" fill="#3B82F6" radius={[8, 8, 0, 0]} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
