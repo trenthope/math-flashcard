@@ -69,9 +69,13 @@ function daysAgo(days: number) {
 type Metric = { value: (s: SessionRecord) => number; decimals: number };
 type ChartRow = { date: string; sessions: number } & Record<string, number | string>;
 
+// Flashcard sessions have no time limit, so speed uses the session's length
 const FLASHCARD_METRICS: Record<string, Metric> = {
   accuracy: { value: (s) => s.accuracy * 100, decimals: 0 },
-  avgTime: { value: (s) => s.avgTimePerCard / 1000, decimals: 1 },
+  correctPerMin: {
+    value: (s) => (s.totalTime > 0 ? s.cardsCorrect / (s.totalTime / 60000) : 0),
+    decimals: 1,
+  },
 };
 
 const MATH_MINUTE_METRICS: Record<string, Metric> = {
@@ -273,7 +277,7 @@ export default function HistoryPage() {
               <ChartSection
                 title="Flashcard Progress 📈"
                 data={flashcardChartData}
-                charts={FLASHCARD_CHARTS}
+                charts={PROGRESS_CHARTS}
                 tooltipStyle={tooltipStyle}
               />
             )}
@@ -281,7 +285,7 @@ export default function HistoryPage() {
               <ChartSection
                 title="Flashcard Daily Averages 📅"
                 data={flashcardDailyData}
-                charts={FLASHCARD_CHARTS}
+                charts={PROGRESS_CHARTS}
                 tooltipStyle={tooltipStyle}
                 daily
               />
@@ -296,7 +300,7 @@ export default function HistoryPage() {
               <ChartSection
                 title="Math Minute Progress ⏱️"
                 data={mathMinuteChartData}
-                charts={MATH_MINUTE_CHARTS}
+                charts={PROGRESS_CHARTS}
                 tooltipStyle={tooltipStyle}
               />
             )}
@@ -304,7 +308,7 @@ export default function HistoryPage() {
               <ChartSection
                 title="Math Minute Daily Averages 📅"
                 data={mathMinuteDailyData}
-                charts={MATH_MINUTE_CHARTS}
+                charts={PROGRESS_CHARTS}
                 tooltipStyle={tooltipStyle}
                 daily
               />
@@ -383,15 +387,11 @@ type ChartSpec = {
   name: string;
   kind: 'line' | 'bar';
   color: string;
-  unit: '%' | 's' | '/min';
+  unit: '%' | '/min';
 };
 
-const FLASHCARD_CHARTS: ChartSpec[] = [
-  { title: 'Accuracy', dataKey: 'accuracy', name: 'Accuracy', kind: 'line', color: '#EF4444', unit: '%' },
-  { title: 'Avg Time per Card', dataKey: 'avgTime', name: 'Avg Time', kind: 'line', color: '#F97316', unit: 's' },
-];
-
-const MATH_MINUTE_CHARTS: ChartSpec[] = [
+// Both modes chart the same two metrics
+const PROGRESS_CHARTS: ChartSpec[] = [
   { title: 'Speed (correct per minute)', dataKey: 'correctPerMin', name: 'Correct', kind: 'bar', color: '#3B82F6', unit: '/min' },
   { title: 'Accuracy', dataKey: 'accuracy', name: 'Accuracy', kind: 'line', color: '#22C55E', unit: '%' },
 ];
