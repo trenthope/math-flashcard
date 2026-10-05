@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useGameStore } from '@/store/gameStore';
 import { useHistoryStore } from '@/store/historyStore';
 import { buildQuestion } from '@/lib/game';
+import { usePracticeTimer } from '@/hooks/usePracticeTimer';
 import { SessionRecord } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import confetti from 'canvas-confetti';
@@ -32,6 +33,9 @@ export default function PlayPage() {
     quitSession,
   } = useGameStore();
   const { saveSession } = useHistoryStore();
+
+  // Track active math time; stops when the session ends or is quit
+  usePracticeTimer(isActive);
 
   const [input, setInput] = useState('');
   const [timeLeft, setTimeLeft] = useState<number | null>(settings.perCardLimit);

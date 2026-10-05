@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useCurrentUserSessions, useHistoryStore } from '@/store/historyStore';
 import { useUserStore } from '@/store/userStore';
+import { localDateKey, useCurrentUserPracticeTime } from '@/store/practiceTimeStore';
 import { GameMode, Operation, SessionRecord } from '@/types';
 import {
   LineChart,
@@ -48,6 +49,14 @@ function fmtDateTime(iso: string) {
   });
 }
 
+function fmtDuration(ms: number) {
+  const totalMin = Math.floor(ms / 60000);
+  if (totalMin < 1) return `${Math.floor(ms / 1000)}s`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 function daysAgo(days: number) {
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -59,6 +68,7 @@ function daysAgo(days: number) {
 
 export default function HistoryPage() {
   const sessions = useCurrentUserSessions();
+  const practiceTime = useCurrentUserPracticeTime();
   const clearHistory = useHistoryStore((s) => s.clearHistory);
   const { users, currentUserId } = useUserStore();
   const currentUser = users.find((u) => u.id === currentUserId);
@@ -123,6 +133,18 @@ export default function HistoryPage() {
     [filtered, sortNewest],
   );
 
+  const today = localDateKey();
+  const weekStart = localDateKey(daysAgo(6));
+  const mathTime = Object.entries(practiceTime).reduce(
+    (acc, [day, ms]) => {
+      if (day === today) acc.today += ms;
+      if (day >= weekStart) acc.week += ms;
+      acc.all += ms;
+      return acc;
+    },
+    { today: 0, week: 0, all: 0 },
+  );
+
   const tooltipStyle = {
     backgroundColor: '#FFFFFF',
     border: '2px solid #E5E7EB',
@@ -138,6 +160,22 @@ export default function HistoryPage() {
         <h1 className="text-3xl font-bold text-gray-800" style={{ fontFamily: "'Fredoka', sans-serif" }}>
           {currentUser ? `${currentUser.name}\u2019s History` : 'Session History'}
         </h1>
+
+        {/* ── Math Time ───────────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Math Time Today', value: mathTime.today, cls: 'bg-blue-100 border-blue-200 text-blue-600' },
+            { label: 'Last 7 Days', value: mathTime.week, cls: 'bg-purple-100 border-purple-200 text-purple-600' },
+            { label: 'All Time', value: mathTime.all, cls: 'bg-orange-100 border-orange-200 text-orange-600' },
+          ].map(({ label, value, cls }) => (
+            <div key={label} className={`${cls} border-2 rounded-2xl p-4 text-center`}>
+              <div className="text-2xl md:text-3xl font-bold" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+                {fmtDuration(value)}
+              </div>
+              <div className="text-xs md:text-sm mt-1 font-bold">{label}</div>
+            </div>
+          ))}
+        </div>
 
         {/* ── Filter Bar ──────────────────────────────────────── */}
         <div className="bg-white rounded-3xl border-2 border-gray-200 p-4 shadow-md">
