@@ -64,6 +64,56 @@ function daysAgo(days: number) {
   return d;
 }
 
+// ── Chart Data ───────────────────────────────────────────────
+
+type Metric = { value: (s: SessionRecord) => number; decimals: number };
+type ChartRow = { date: string; sessions: number } & Record<string, number | string>;
+
+const FLASHCARD_METRICS: Record<string, Metric> = {
+  accuracy: { value: (s) => s.accuracy * 100, decimals: 0 },
+  avgTime: { value: (s) => s.avgTimePerCard / 1000, decimals: 1 },
+};
+
+const MATH_MINUTE_METRICS: Record<string, Metric> = {
+  accuracy: { value: (s) => s.accuracy * 100, decimals: 0 },
+  correctPerMin: {
+    value: (s) => (s.timeLimit > 0 ? (s.cardsCorrect / s.timeLimit) * 60 : 0),
+    decimals: 1,
+  },
+};
+
+function round(value: number, decimals: number) {
+  const f = 10 ** decimals;
+  return Math.round(value * f) / f;
+}
+
+/** One chart row per session. Expects sessions sorted oldest first. */
+function sessionRows(sessions: SessionRecord[], metrics: Record<string, Metric>): ChartRow[] {
+  return sessions.map((s) => {
+    const row: ChartRow = { date: fmtDate(s.createdAt), sessions: 1 };
+    for (const [key, m] of Object.entries(metrics)) row[key] = round(m.value(s), m.decimals);
+    return row;
+  });
+}
+
+/** One chart row per local calendar day, averaging each metric across that
+ *  day's sessions. Expects sessions sorted oldest first. */
+function dailyRows(sessions: SessionRecord[], metrics: Record<string, Metric>): ChartRow[] {
+  const byDay = new Map<string, SessionRecord[]>();
+  for (const s of sessions) {
+    const day = localDateKey(new Date(s.createdAt));
+    byDay.set(day, [...(byDay.get(day) ?? []), s]);
+  }
+  return [...byDay.values()].map((daySessions) => {
+    const row: ChartRow = { date: fmtDate(daySessions[0].createdAt), sessions: daySessions.length };
+    for (const [key, m] of Object.entries(metrics)) {
+      const total = daySessions.reduce((sum, s) => sum + m.value(s), 0);
+      row[key] = round(total / daySessions.length, m.decimals);
+    }
+    return row;
+  });
+}
+
 // ── Component ────────────────────────────────────────────────
 
 export default function HistoryPage() {
@@ -112,17 +162,10 @@ export default function HistoryPage() {
     [filtered],
   );
 
-  const flashcardChartData = flashcardSessions.map((s) => ({
-    date: fmtDate(s.createdAt),
-    accuracy: Math.round(s.accuracy * 100),
-    avgTime: +(s.avgTimePerCard / 1000).toFixed(1),
-  }));
-
-  const mathMinuteChartData = mathMinuteSessions.map((s) => ({
-    date: fmtDate(s.createdAt),
-    correctPerMin: s.timeLimit > 0 ? +((s.cardsCorrect / s.timeLimit) * 60).toFixed(1) : 0,
-    accuracy: Math.round(s.accuracy * 100),
-  }));
+  const flashcardChartData = sessionRows(flashcardSessions, FLASHCARD_METRICS);
+  const flashcardDailyData = dailyRows(flashcardSessions, FLASHCARD_METRICS);
+  const mathMinuteChartData = sessionRows(mathMinuteSessions, MATH_MINUTE_METRICS);
+  const mathMinuteDailyData = dailyRows(mathMinuteSessions, MATH_MINUTE_METRICS);
 
   const sortedFiltered = useMemo(
     () =>
@@ -224,76 +267,50 @@ export default function HistoryPage() {
         </div>
 
         {/* ── Flashcard Charts ─────────────────────────────────── */}
-        {(modeFilter === 'all' || modeFilter === 'flashcard') &&
-          flashcardChartData.length >= 2 && (
-            <div className="bg-white rounded-3xl border-2 border-gray-200 p-6 shadow-md">
-              <h2 className="text-xl font-bold text-gray-700 mb-4" style={{ fontFamily: "'Fredoka', sans-serif" }}>
-                Flashcard Progress &#x1F4C8;
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-400 mb-2">Accuracy</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={flashcardChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                      <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#9CA3AF' }} tickFormatter={(v: number) => `${v}%`} />
-                      <Tooltip formatter={(value) => `${value}%`} contentStyle={tooltipStyle} />
-                      <Line type="monotone" dataKey="accuracy" name="Accuracy" stroke="#EF4444" strokeWidth={3} dot={{ r: 5, fill: '#EF4444' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-gray-400 mb-2">Avg Time per Card</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={flashcardChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                      <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} tickFormatter={(v: number) => `${v}s`} />
-                      <Tooltip formatter={(value) => `${value}s`} contentStyle={tooltipStyle} />
-                      <Line type="monotone" dataKey="avgTime" name="Avg Time" stroke="#F97316" strokeWidth={3} dot={{ r: 5, fill: '#F97316' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          )}
+        {(modeFilter === 'all' || modeFilter === 'flashcard') && (
+          <>
+            {flashcardChartData.length >= 2 && (
+              <ChartSection
+                title="Flashcard Progress 📈"
+                data={flashcardChartData}
+                charts={FLASHCARD_CHARTS}
+                tooltipStyle={tooltipStyle}
+              />
+            )}
+            {flashcardDailyData.length >= 2 && (
+              <ChartSection
+                title="Flashcard Daily Averages 📅"
+                data={flashcardDailyData}
+                charts={FLASHCARD_CHARTS}
+                tooltipStyle={tooltipStyle}
+                daily
+              />
+            )}
+          </>
+        )}
 
         {/* ── Math Minute Charts ──────────────────────────────── */}
-        {(modeFilter === 'all' || modeFilter === 'mathminute') &&
-          mathMinuteChartData.length >= 2 && (
-            <div className="bg-white rounded-3xl border-2 border-gray-200 p-6 shadow-md">
-              <h2 className="text-xl font-bold text-gray-700 mb-4" style={{ fontFamily: "'Fredoka', sans-serif" }}>
-                Math Minute Progress &#x23F1;&#xFE0F;
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-400 mb-2">Speed (correct per minute)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <ComposedChart data={mathMinuteChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                      <Tooltip formatter={(value) => `${value}/min`} contentStyle={tooltipStyle} />
-                      <Bar dataKey="correctPerMin" name="Correct" fill="#3B82F6" radius={[8, 8, 0, 0]} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-gray-400 mb-2">Accuracy</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={mathMinuteChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                      <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#9CA3AF' }} tickFormatter={(v: number) => `${v}%`} />
-                      <Tooltip formatter={(value) => `${value}%`} contentStyle={tooltipStyle} />
-                      <Line type="monotone" dataKey="accuracy" name="Accuracy" stroke="#22C55E" strokeWidth={3} dot={{ r: 5, fill: '#22C55E' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          )}
+        {(modeFilter === 'all' || modeFilter === 'mathminute') && (
+          <>
+            {mathMinuteChartData.length >= 2 && (
+              <ChartSection
+                title="Math Minute Progress ⏱️"
+                data={mathMinuteChartData}
+                charts={MATH_MINUTE_CHARTS}
+                tooltipStyle={tooltipStyle}
+              />
+            )}
+            {mathMinuteDailyData.length >= 2 && (
+              <ChartSection
+                title="Math Minute Daily Averages 📅"
+                data={mathMinuteDailyData}
+                charts={MATH_MINUTE_CHARTS}
+                tooltipStyle={tooltipStyle}
+                daily
+              />
+            )}
+          </>
+        )}
 
         {/* ── Session Table ────────────────────────────────────── */}
         <div className="bg-white rounded-3xl border-2 border-gray-200 overflow-hidden shadow-md">
@@ -355,6 +372,98 @@ export default function HistoryPage() {
         )}
       </div>
     </main>
+  );
+}
+
+// ── Charts ───────────────────────────────────────────────────
+
+type ChartSpec = {
+  title: string;
+  dataKey: string;
+  name: string;
+  kind: 'line' | 'bar';
+  color: string;
+  unit: '%' | 's' | '/min';
+};
+
+const FLASHCARD_CHARTS: ChartSpec[] = [
+  { title: 'Accuracy', dataKey: 'accuracy', name: 'Accuracy', kind: 'line', color: '#EF4444', unit: '%' },
+  { title: 'Avg Time per Card', dataKey: 'avgTime', name: 'Avg Time', kind: 'line', color: '#F97316', unit: 's' },
+];
+
+const MATH_MINUTE_CHARTS: ChartSpec[] = [
+  { title: 'Speed (correct per minute)', dataKey: 'correctPerMin', name: 'Correct', kind: 'bar', color: '#3B82F6', unit: '/min' },
+  { title: 'Accuracy', dataKey: 'accuracy', name: 'Accuracy', kind: 'line', color: '#22C55E', unit: '%' },
+];
+
+function ChartSection({
+  title,
+  data,
+  charts,
+  tooltipStyle,
+  daily = false,
+}: {
+  title: string;
+  data: ChartRow[];
+  charts: ChartSpec[];
+  tooltipStyle: React.CSSProperties;
+  daily?: boolean;
+}) {
+  return (
+    <div className="bg-white rounded-3xl border-2 border-gray-200 p-6 shadow-md">
+      <h2 className="text-xl font-bold text-gray-700 mb-4" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+        {title}
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {charts.map((c) => {
+          const children = [
+            <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#E5E7EB" />,
+            <XAxis key="x" dataKey="date" tick={{ fontSize: 12, fill: '#9CA3AF' }} />,
+            <YAxis
+              key="y"
+              domain={c.unit === '%' ? [0, 100] : undefined}
+              allowDecimals={c.unit !== '/min'}
+              tick={{ fontSize: 12, fill: '#9CA3AF' }}
+              tickFormatter={c.unit === '/min' ? undefined : (v: number) => `${v}${c.unit}`}
+            />,
+            <Tooltip
+              key="tip"
+              formatter={(value) => `${value}${c.unit}`}
+              // Daily tooltips show how many sessions went into each average
+              labelFormatter={
+                daily
+                  ? (label, payload) => {
+                      const n = (payload?.[0]?.payload as ChartRow | undefined)?.sessions ?? 0;
+                      return `${label} · ${n} session${n === 1 ? '' : 's'}`;
+                    }
+                  : undefined
+              }
+              contentStyle={tooltipStyle}
+            />,
+          ];
+          return (
+            <div key={c.dataKey}>
+              <h3 className="text-sm font-bold text-gray-400 mb-2">
+                {daily ? `${c.title} — daily avg` : c.title}
+              </h3>
+              <ResponsiveContainer width="100%" height={220}>
+                {c.kind === 'bar' ? (
+                  <ComposedChart data={data}>
+                    {children}
+                    <Bar dataKey={c.dataKey} name={c.name} fill={c.color} radius={[8, 8, 0, 0]} />
+                  </ComposedChart>
+                ) : (
+                  <LineChart data={data}>
+                    {children}
+                    <Line type="monotone" dataKey={c.dataKey} name={c.name} stroke={c.color} strokeWidth={3} dot={{ r: 5, fill: c.color }} />
+                  </LineChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
