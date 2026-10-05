@@ -99,20 +99,21 @@ export default function PlayPage() {
     setSessionTimeLeft(settings.timeLimit);
 
     sessionTimerRef.current = setInterval(() => {
-      setSessionTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(sessionTimerRef.current!);
-          handleEndSession();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setSessionTimeLeft((prev) => Math.max(prev - 1, 0));
     }, 1000);
 
     return () => {
       if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
     };
   }, []);
+
+  // End Math Minute when the session timer runs out. Kept out of the
+  // setState updater above, which must be pure (it runs during render).
+  useEffect(() => {
+    if (!isFlashcard && sessionTimeLeft === 0) {
+      handleEndSession();
+    }
+  }, [sessionTimeLeft]);
 
   // Check if flashcard deck is complete
   useEffect(() => {
