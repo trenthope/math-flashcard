@@ -37,8 +37,11 @@ export default function PlayPage() {
   // Track active math time; stops when the session ends or is quit
   usePracticeTimer(isActive);
 
+  // The per-card limit is a Flashcard setting; Math Minute never uses it
+  const perCardLimit = settings.mode === 'flashcard' ? settings.perCardLimit : null;
+
   const [input, setInput] = useState('');
-  const [timeLeft, setTimeLeft] = useState<number | null>(settings.perCardLimit);
+  const [timeLeft, setTimeLeft] = useState<number | null>(perCardLimit);
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(settings.timeLimit);
 
   const [reveal, setReveal] = useState<{
@@ -83,7 +86,7 @@ export default function PlayPage() {
     setInput('');
 
     if (correct) {
-      setTimeLeft(settings.perCardLimit);
+      setTimeLeft(perCardLimit);
       advanceCard();
     } else {
       setReveal({ correctAnswer: answer, wasTimeout: false });
@@ -93,7 +96,7 @@ export default function PlayPage() {
   const handleAdvance = () => {
     setReveal(null);
     setInput('');
-    setTimeLeft(settings.perCardLimit);
+    setTimeLeft(perCardLimit);
     advanceCard();
   };
 
@@ -117,7 +120,7 @@ export default function PlayPage() {
       rangeMax: s.rangeMax,
       deckSize: s.deckSize,
       timeLimit: s.timeLimit,
-      perCardLimit: s.perCardLimit,
+      perCardLimit: s.mode === 'flashcard' ? s.perCardLimit : null,
       repeatWindow: s.repeatWindow,
       ...stats,
       cards: cardResults,
@@ -169,7 +172,7 @@ export default function PlayPage() {
   // Per-card timer — only runs when not in reveal state. The countdown
   // value is reset by the handlers that move to the next card.
   useEffect(() => {
-    if (!currentCardId || reveal || !settings.perCardLimit) return;
+    if (!currentCardId || reveal || !perCardLimit) return;
 
     cardTimerRef.current = setInterval(() => {
       setTimeLeft((prev) => (prev === null ? null : Math.max(prev - 1, 0)));
@@ -178,7 +181,7 @@ export default function PlayPage() {
     return () => {
       if (cardTimerRef.current) clearInterval(cardTimerRef.current);
     };
-  }, [currentCardId, reveal, settings.perCardLimit]);
+  }, [currentCardId, reveal, perCardLimit]);
 
   // Handle timeout when the card timer reaches 0
   useEffect(() => {

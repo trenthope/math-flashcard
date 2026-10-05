@@ -67,6 +67,6 @@ export const defaultSettings: SessionSettings = {
   rangeMax: 12,
   deckSize: 20,
   timeLimit: 60,
-  perCardLimit: null,
+  perCardLimit: 5,
   repeatWindow: 3,
 };
